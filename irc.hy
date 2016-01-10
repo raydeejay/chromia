@@ -3,30 +3,35 @@
 
 (defclass IRCBadMessage [Exception])
 
-(defn parse-message [s]
+(defn parse-message [message]
   "Breaks a message from an IRC server into its prefix, command, and
   arguments."
 
-  (setv prefix ""
-        trailing [])
-
-  (if (not s)
+  (if (not message)
     (raise (IRCBadMessage "Empty line.")))
 
-  (setv s (.strip s "\n\r"))
+  ;; strip newline chars (have to check the RFC... or not)
+  (let [s (.strip message "\n\r")
+        prefix ""
+        trailing []]
 
-  (if (= (first s) ":")
-    (setv (, prefix s) (.split (cut s 1) " " 1)))
+    ;; grab the prefix if it exists
+    (if (= (first s) ":")
+      (setv (, prefix s) (.split (cut s 1) " " 1)))
 
-  (if (!= (.find s " :") -1)
-    (do
-     (setv (, s trailing) (.split s " :" 1)
-           args (.split s))
-     (.append args trailing))
-    (setv args (.split s)))
+    ;; make the args list considering if there's a "colon argument"
+    (if (!= (.find s " :") -1)
+      (do
+       (setv (, s trailing) (.split s " :" 1)
+             args (.split s))
+       (.append args trailing))
+      (setv args (.split s)))
 
-  (setv command (.pop args 0))
-  (, prefix command args))
+    ;; extract the IRC command from the args
+    (setv command (.pop args 0))
+
+    ;; return a tuple
+    (, prefix command args)))
 
 (defn irc-send [socket message]
   (.send socket (.encode message "utf-8")))
@@ -39,6 +44,25 @@
       RESTART 90
       STOP 99)
 (def *state* START)
+
+(def *commands* {
+                 "!say " (lambda [bot text]
+                           (let [msg (cut text (+ 5 (text.find "!say ")))]
+                             (print "Saying:" msg)
+                             (bot.say-to-channel (first bot.config.channels) msg)))
+                 "!reload" (lambda [bot text]
+                             (let [m "Reloading..."]
+                               (print m)
+                               (bot.say-to-channel (first bot.config.channels) m)))
+
+                 "!parse" (lambda [bot text]
+                            (bot.say-to-channel (first bot.config.channels)
+                                                (str (parse-message text))))
+
+                 "!quit" (lambda [bot text]
+                           (print "Quitting.")
+                           (bot.quit-irc))  })
+
 
 (defclass IRCSession [object]
   "This is the class!"
@@ -113,26 +137,10 @@
              (print "Logged in, joining channels...")
              (self.join-channels))
 
-           ;; say
-           (when (!= (text.find "!say ") -1)
-             (let [msg (cut text (+ 5 (text.find "!say ")))]
-               (print "Saying:" msg)
-               (self.say-to-channel (first self.config.channels) msg)))
-
-           ;; reload
-           (when (!= (text.find "!reload") -1)
-             (let [m "Reloading..."]
-               (print m)
-               (self.say-to-channel (first self.config.channels) m)))
-
-           ;; parse
-           (when (!= (text.find "!parse") -1)
-             (self.say-to-channel (first self.config.channels) (str (parse-message text))))
-
-           ;; quit
-           (when (!= (text.find "!quit") -1)
-             (print "Quitting.")
-             (self.quit-irc)))
+           ;; loop through commands
+           (for [(, k v) (.items *commands*)]
+             (when (!= (text.find k) -1)
+               (v self text))))
 
          (except [e Exception]
            (print (% "Error with input %s" (, text)))
