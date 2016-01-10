@@ -1,4 +1,5 @@
 (import ssl socket time
+        [imp [reload]]
         [utils [*]])
 
 (defclass IRCBadMessage [Exception])
@@ -45,23 +46,6 @@
       STOP 99)
 (def *state* START)
 
-(def *commands* {
-                 "!say " (lambda [bot text]
-                           (let [msg (cut text (+ 5 (text.find "!say ")))]
-                             (print "Saying:" msg)
-                             (bot.say-to-channel (first bot.config.channels) msg)))
-                 "!reload" (lambda [bot text]
-                             (let [m "Reloading..."]
-                               (print m)
-                               (bot.say-to-channel (first bot.config.channels) m)))
-
-                 "!parse" (lambda [bot text]
-                            (bot.say-to-channel (first bot.config.channels)
-                                                (str (parse-message text))))
-
-                 "!quit" (lambda [bot text]
-                           (print "Quitting.")
-                           (bot.quit-irc))  })
 
 
 (defclass IRCSession [object]
@@ -97,8 +81,8 @@
     (print (% "Logging in as %s" (, self.config.botnick)))
     (irc-send self.socket (+ "USER " self.config.botnick " 0 * :A Hy bot\n"))
     (if self.config.server-password
-      (irc-send self.socket (% "PASS %s\n" (, self.config.password)))
-    (irc-send self.socket (+ "NICK " self.config.botnick "\n"))))
+      (irc-send self.socket (% "PASS %s\n" (, self.config.password))))
+    (irc-send self.socket (+ "NICK " self.config.botnick "\n")))
   
   (defn mainloop [self]
     (while (< self.state STOP)
@@ -123,6 +107,7 @@
       (for [text (readline-socket self.socket)]
         (try
          (when text
+           (import commands)
            (print text)
 
            ;; Prevent Timeout
@@ -137,10 +122,17 @@
              (print "Logged in, joining channels...")
              (self.join-channels))
 
+           (when (!= (text.find "!reload") -1)
+             (let [m "Reloading... well it should reload but it doesn't work."]
+               (print m)
+               (self.say-to-channel (first self.config.channels) m))
+             (reload commands))
+
            ;; loop through commands
-           (for [(, k v) (.items *commands*)]
+           (for [(, k v) (.items commands.*commands*)]
              (when (!= (text.find k) -1)
-               (v self text))))
+               (v self text)
+               (break))))
 
          (except [e Exception]
            (print (% "Error with input %s" (, text)))
