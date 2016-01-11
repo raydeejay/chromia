@@ -93,7 +93,7 @@ channel."
 (defclass CommandAttack [Command]
   "Cause some pain to someone."
   [name "attack"
-   patterns [#r"^.attack (.*)$"]]
+   patterns [#r"^\.attack (.*)$"]]
 
   (defn action [self]
     (let [source self.issuer
