@@ -31,9 +31,6 @@
             self.state START
             self.config config)))
 
-  (defn quit-irc [self]
-    (setv self.state STOP))
-
   (defn join-channels [self]
     (for [c self.config.channels]
       (join-channel self.socket c)))
@@ -49,6 +46,10 @@
     (print (% "Establishing connection to [%s]" (, self.config.server)))
     (self.socket.connect (, self.config.server self.config.port))
     (self.socket.setblocking false))
+
+  (defn stop [self]
+    (print (% "Disconnecting from [%s]" (, self.config.server)))
+    (setv self.state STOP))
 
   (defn login [self]
     (print (% "Logging in as %s" (, self.config.botnick)))
@@ -80,33 +81,40 @@
       (for [text (readline-socket self.socket)]
         (try
          (when text
-           (let [message (parse-message text)]
+           (let [irc-message (parse-message text)
+                 irc-issuer (first irc-message)
+                 irc-command (second irc-message)
+                 irc-args (third irc-message)]
              (print text)
-             (print message)
+             (print irc-message)
 
+             ;;; AUTONOMOUS RESPONSES
              ;; Prevent Timeout
-             (when (= (second message) "PING")
+             (when (= irc-command "PING")
                (print "Replying to ping...")
                (irc-send self.socket (+ "PONG " (first irc-args))))
 
              ;; join channels
-             (when (= (second message) "376")
+             (when (= irc-command "376")
                (print "End of MOTD, logging in to Nickserv...")
                (irc-send self.socket (% "PRIVMSG nickserv :identify %s %s" (, self.config.botnick self.config.password)))
                (print "Logged in to IRC, joining channels...")
                (self.join-channels))
 
+             ;;; BUILTINS
+             ;; let's leave here just in case, for now
              (when (!= (text.find "!reload") -1)
                (let [m "Reloading commands."
                      message (parse-message text)
-                     chan (first (third message))]
+                     chan (first irc-args)]
                  (print m)
-                 (self.say-to-channel chan m))
+                 (self.send-to chan m))
                (reload "commands"))
 
+             ;;; COMMANDS
              ;; some rudimentary guard
-             (when (and (= (second message) "PRIVMSG")
-                        (in (first (third message))
+             (when (and (= irc-command "PRIVMSG")
+                        (in (first irc-args)
                             ["#gossip" "#AppliedEnergistics" self.config.botnick]))
                ;; class-based commands
                (commands.interpret self text))))

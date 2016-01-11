@@ -11,6 +11,7 @@
   [bot nil
    text nil
    msg nil
+   source nil
    issuer nil
    args nil
    public false
@@ -22,6 +23,7 @@
     (setv self.bot bot
           self.text text
           self.msg (parse-message text)
+          self.source (first self.msg)
           self.issuer (first (third self.msg))
           self.args (second (third self.msg))))
 
@@ -45,8 +47,8 @@ channel."
    patterns [#r"^!say (.*)" #r"^!speak (.*)"]]
 
   (defn action [self]
-    (let [target self.issuer]
-      (self.bot.say-to-channel target (second (.split self.args " " 1))))))
+    (let [source self.issuer]
+      (self.bot.send-to source (second (.split self.args " " 1))))))
 
 
 (defclass CommandBye [Command]
@@ -55,9 +57,9 @@ channel."
    patterns [#r"^!bye$"]]
 
   (defn action [self]
-    (let [target self.issuer]
-      (self.bot.say-to-channel target "Shutting down.")
-      (self.bot.quit-irc))))
+    (let [source self.issuer]
+      (self.bot.send-to source "Shutting down.")
+      (self.bot.stop))))
 
 
 (defclass CommandCommands [Command]
@@ -66,9 +68,9 @@ channel."
    patterns [#r"^!commands$"]]
 
   (defn action [self]
-    (let [target self.issuer]
+    (let [source self.issuer]
       (for [cls cmdlist]
-        (self.bot.say-to-channel target (% "%s - %s"
+        (self.bot.send-to source (% "%s - %s"
                                            (, cls.--name--
                                               (first (.split cls.--doc-- "\n" 1)))))))))
 
@@ -79,18 +81,32 @@ channel."
    patterns [#r"^!help (.*)$"]]
 
   (defn action [self]
-    (let [target self.issuer
+    (let [source self.issuer
           wanted-command (second (.split self.args " " 1))]
       (for [cls cmdlist]
         (when (= cls.name wanted-command)
           (for [line (flatten [cls.--name--
                                (.split cls.--doc-- "\n")])]
-            (self.bot.say-to-channel target line)))))))
+            (self.bot.send-to source line)))))))
+
+
+(defclass CommandAttack [Command]
+  "Cause some pain to someone."
+  [name "attack"
+   patterns [#r"^.attack (.*)$"]]
+
+  (defn action [self]
+    (let [source self.issuer
+          attacker (first (.split source "!" 1))
+          victim (second (.split self.args " " 1))]
+      (self.bot.send-to source (% "%s hits %s for 78546 points of damage."
+                                  (, attacker
+                                     victim))))))
 
 
 ;; FIXME - maybe use some reflection instead of this
 ;; (defn subclass? [cls sup] (and (!= cls sup) (issubclass cls sup)))
-(def cmdlist [CommandSay CommandBye CommandCommands CommandHelp])
+(def cmdlist [CommandSay CommandBye CommandCommands CommandHelp CommandAttack])
 
 ;; FIXME - should this be a method on Command?
 (defn interpret [bot text]
