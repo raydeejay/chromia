@@ -1,7 +1,7 @@
 ;; IRC Settings
 (setv server "irc.esper.net"
       port 6697
-      channels ["#gossip"]
+      channels ["#AppliedEnergistics" "#gossip"]
       botnick "chromia2"
       server-password nil
       password "haha")

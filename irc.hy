@@ -1,38 +1,9 @@
 (import ssl socket time
-        [imp [reload]]
-        [utils [*]])
+        [reloader [hy-reload :as reload]]
+        [utils [*]]
+        commands)
 
-(defclass IRCBadMessage [Exception])
-
-(defn parse-message [message]
-  "Breaks a message from an IRC server into its prefix, command, and
-  arguments."
-
-  (if (not message)
-    (raise (IRCBadMessage "Empty line.")))
-
-  ;; strip newline chars (have to check the RFC... or not)
-  (let [s (.strip message "\n\r")
-        prefix ""
-        trailing []]
-
-    ;; grab the prefix if it exists
-    (if (= (first s) ":")
-      (setv (, prefix s) (.split (cut s 1) " " 1)))
-
-    ;; make the args list considering if there's a "colon argument"
-    (if (!= (.find s " :") -1)
-      (do
-       (setv (, s trailing) (.split s " :" 1)
-             args (.split s))
-       (.append args trailing))
-      (setv args (.split s)))
-
-    ;; extract the IRC command from the args
-    (setv command (.pop args 0))
-
-    ;; return a tuple
-    (, prefix command args)))
+(import [pars [parse-message]])
 
 (defn irc-send [socket message]
   (.send socket (.encode message "utf-8")))
@@ -107,32 +78,36 @@
       (for [text (readline-socket self.socket)]
         (try
          (when text
-           (import commands)
-           (print text)
+           (let [message (parse-message text)]
+             (print text)
+             (print message)
 
-           ;; Prevent Timeout
-           (when (!= (text.find "PING") -1)
-             (print "Replying to ping...")
-             (irc-send self.socket (+ "PONG " (. (text.split) [1]) "\r\n")))
+             ;; Prevent Timeout
+             (when (= (second message) "PING")
+               (print "Replying to ping...")
+               (irc-send self.socket (+ "PONG " (. (text.split) [1]) "\r\n")))
 
-           ;; join channels
-           (when (!= (text.find "End of /MOTD command.") -1)
-             (print "Logging in to Nickserv...")
-             (irc-send self.socket (% "PRIVMSG nickserv :identify %s %s\r\n" (, self.config.botnick self.config.password)))
-             (print "Logged in, joining channels...")
-             (self.join-channels))
+             ;; join channels
+             (when (= (second message) "376")
+               (print "End of MOTD, logging in to Nickserv...")
+               (irc-send self.socket (% "PRIVMSG nickserv :identify %s %s\r\n" (, self.config.botnick self.config.password)))
+               (print "Logged in to IRC, joining channels...")
+               (self.join-channels))
 
-           (when (!= (text.find "!reload") -1)
-             (let [m "Reloading... well it should reload but it doesn't work."]
-               (print m)
-               (self.say-to-channel (first self.config.channels) m))
-             (reload commands))
+             (when (!= (text.find "!reload") -1)
+               (let [m "Reloading commands."
+                     message (parse-message text)
+                     chan (first (third message))]
+                 (print m)
+                 (self.say-to-channel chan m))
+               (reload "commands"))
 
-           ;; loop through commands
-           (for [(, k v) (.items commands.*commands*)]
-             (when (!= (text.find k) -1)
-               (v self text)
-               (break))))
+             ;; some rudimentary guard
+             (when (and (= (second message) "PRIVMSG")
+                        (in (first (third message))
+                            ["#gossip" "#AppliedEnergistics" self.config.botnick]))
+               ;; class-based commands
+               (commands.interpret self text))))
 
          (except [e Exception]
            (print (% "Error with input %s" (, text)))
