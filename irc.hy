@@ -6,7 +6,7 @@
 (import [pars [parse-message]])
 
 (defn irc-send [socket message]
-  (.send socket (.encode message "utf-8")))
+  (.send socket (.encode (+ message "\r\n") "utf-8")))
 
 (defn join-channel [socket channel]
   (irc-send socket (+ "JOIN " channel "\n")))
@@ -38,10 +38,12 @@
     (for [c self.config.channels]
       (join-channel self.socket c)))
 
-  (defn say-to-channel [self channel message]
-    (.send self.socket
-           (.encode (+ "PRIVMSG " channel " :" message "\n")
-                    "utf-8")))
+  (defn send-to [self target message]
+    (irc-send self.socket(+ "PRIVMSG " target " :" message)))
+
+  (defn send-to-admin [self] "TBI")
+
+  (defn send-to-reporting-channels [self] "TBI")
 
   (defn start [self]
     (print (% "Establishing connection to [%s]" (, self.config.server)))
@@ -50,11 +52,11 @@
 
   (defn login [self]
     (print (% "Logging in as %s" (, self.config.botnick)))
-    (irc-send self.socket (+ "USER " self.config.botnick " 0 * :A Hy bot\n"))
+    (irc-send self.socket (+ "USER " self.config.botnick " 0 * :" self.config.description))
     (if self.config.server-password
-      (irc-send self.socket (% "PASS %s\n" (, self.config.password))))
-    (irc-send self.socket (+ "NICK " self.config.botnick "\n")))
-  
+      (irc-send self.socket (% "PASS %s" (, self.config.password))))
+    (irc-send self.socket (+ "NICK " self.config.botnick)))
+
   (defn mainloop [self]
     (while (< self.state STOP)
       (time.sleep 0.001)
@@ -85,12 +87,12 @@
              ;; Prevent Timeout
              (when (= (second message) "PING")
                (print "Replying to ping...")
-               (irc-send self.socket (+ "PONG " (. (text.split) [1]) "\r\n")))
+               (irc-send self.socket (+ "PONG " (first irc-args))))
 
              ;; join channels
              (when (= (second message) "376")
                (print "End of MOTD, logging in to Nickserv...")
-               (irc-send self.socket (% "PRIVMSG nickserv :identify %s %s\r\n" (, self.config.botnick self.config.password)))
+               (irc-send self.socket (% "PRIVMSG nickserv :identify %s %s" (, self.config.botnick self.config.password)))
                (print "Logged in to IRC, joining channels...")
                (self.join-channels))
 
@@ -115,15 +117,5 @@
            (continue)))))
 
     (when (= self.state STOP)
-      (self.say-to-channel (first self.config.channels) "Stopping.")
-      (irc-send self.socket "QUIT \n")))    
-
-  (defn stop [self])
-
-  (defn send-to [self])
-
-  (defn send-to-channel [self])
-
-  (defn send-to-admin [self])
-
-  (defn send-to-target [self]))
+      (self.send-to (first self.config.channels) "Stopping.")
+      (irc-send self.socket "QUIT"))))
