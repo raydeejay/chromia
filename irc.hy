@@ -15,8 +15,6 @@
 (setv START 1
       RESTART 90
       STOP 99)
-(def *state* START)
-
 
 
 (defclass IRCSession [object]
