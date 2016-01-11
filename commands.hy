@@ -104,9 +104,7 @@ channel."
                                      victim))))))
 
 
-;; FIXME - maybe use some reflection instead of this
-;; (defn subclass? [cls sup] (and (!= cls sup) (issubclass cls sup)))
-(def cmdlist [CommandSay CommandBye CommandCommands CommandHelp CommandAttack])
+(def cmdlist (.--subclasses-- Command))
 
 ;; FIXME - should this be a method on Command?
 (defn interpret [bot text]
